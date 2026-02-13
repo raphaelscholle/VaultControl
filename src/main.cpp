@@ -25,6 +25,7 @@ const uint16_t SERVO_MIN_US = 500;     // pulse width at 0 deg
 const uint16_t SERVO_MAX_US = 2500;    // pulse width at 180 deg
 const uint16_t SERVO_ABS_MIN_US = 300; // safety clamp for calibration
 const uint16_t SERVO_ABS_MAX_US = 3000;
+const uint16_t SERVO_ZERO_US = 1500;   // default "zero" position
 
 // ======= ANALOG CONFIG =======
 const int ANALOG_SAMPLES = 16; // simple averaging
@@ -39,6 +40,7 @@ uint16_t calMax = 0;
 int currentAngle = 90;
 uint16_t servoMinUs = SERVO_MIN_US;
 uint16_t servoMaxUs = SERVO_MAX_US;
+uint16_t servoZeroUs = SERVO_ZERO_US;
 uint32_t currentPulseUs = SERVO_MIN_US;
 
 // ======= HELPERS =======
@@ -121,10 +123,14 @@ void loadServoCalibration() {
   prefs.begin("servo", true);
   servoMinUs = prefs.getUShort("minUs", SERVO_MIN_US);
   servoMaxUs = prefs.getUShort("maxUs", SERVO_MAX_US);
+  servoZeroUs = prefs.getUShort("zeroUs", SERVO_ZERO_US);
   prefs.end();
   if (servoMinUs < SERVO_ABS_MIN_US || servoMaxUs > SERVO_ABS_MAX_US || servoMaxUs <= servoMinUs) {
     servoMinUs = SERVO_MIN_US;
     servoMaxUs = SERVO_MAX_US;
+  }
+  if (servoZeroUs < SERVO_ABS_MIN_US || servoZeroUs > SERVO_ABS_MAX_US) {
+    servoZeroUs = (uint16_t)((servoMinUs + servoMaxUs) / 2);
   }
 }
 
@@ -132,6 +138,7 @@ void saveServoCalibration() {
   prefs.begin("servo", false);
   prefs.putUShort("minUs", servoMinUs);
   prefs.putUShort("maxUs", servoMaxUs);
+  prefs.putUShort("zeroUs", servoZeroUs);
   prefs.end();
 }
 
@@ -165,6 +172,7 @@ void handleStatus() {
   json += "\"ip\":\"" + ip.toString() + "\",";
   json += "\"servoMinUs\":" + String(servoMinUs) + ",";
   json += "\"servoMaxUs\":" + String(servoMaxUs) + ",";
+  json += "\"servoZeroUs\":" + String(servoZeroUs) + ",";
   json += "\"pulse\":" + String(currentPulseUs);
   json += "}";
 
@@ -235,11 +243,17 @@ void handleServoCalibrate() {
     }
     servoMinUs = minUs;
     servoMaxUs = maxUs;
+    if (server.hasArg("zero")) {
+      servoZeroUs = clampServoUs(server.arg("zero").toInt());
+    }
     saveServoCalibration();
     setServoAngle(currentAngle);
+  } else if (cmd == "zero") {
+    setServoPulseUs(servoZeroUs);
   } else if (cmd == "reset") {
     servoMinUs = SERVO_MIN_US;
     servoMaxUs = SERVO_MAX_US;
+    servoZeroUs = SERVO_ZERO_US;
     saveServoCalibration();
     setServoAngle(currentAngle);
   }
@@ -276,7 +290,16 @@ void setup() {
   server.on("/api/set", HTTP_GET, handleSet);
   server.on("/api/calibrate", HTTP_GET, handleCalibrate);
   server.on("/api/servo", HTTP_GET, handleServoCalibrate);
-  server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+  server.on("/", HTTP_GET, []() {
+    File file = SPIFFS.open("/index.html", "r");
+    if (!file) {
+      server.send(404, "text/plain", "Missing index.html");
+      return;
+    }
+    server.streamFile(file, "text/html");
+    file.close();
+  });
+  server.serveStatic("/", SPIFFS, "/");
   server.onNotFound([]() { server.send(404, "text/plain", "Not Found"); });
   server.begin();
 

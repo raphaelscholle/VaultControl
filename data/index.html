@@ -88,6 +88,48 @@
           <span id="noticeText">Calibration idle</span>
         </div>
       </article>
+
+      <article class="card reveal" style="--d: 360ms">
+        <div class="card__head">
+          <div>
+            <p class="kicker">Servo</p>
+            <h2>Calibration & Zero</h2>
+          </div>
+          <span class="pill" id="servoRange">range: --</span>
+        </div>
+        <div class="dial">
+          <div class="dial__value" id="pulseVal">1500 us</div>
+          <input id="pulseRange" class="slider" type="range" min="300" max="3000" value="1500" />
+        </div>
+        <div class="field">
+          <label for="pulseInput">Pulse (us)</label>
+          <input id="pulseInput" class="input" type="number" min="300" max="3000" step="1" value="1500" />
+        </div>
+        <div class="statrow">
+          <div class="field">
+            <label for="servoMin">Min (us)</label>
+            <input id="servoMin" class="input" type="number" min="300" max="3000" step="1" />
+            <button class="btn btn--ghost btn--tiny" id="setMinBtn">Use current</button>
+          </div>
+          <div class="field">
+            <label for="servoMax">Max (us)</label>
+            <input id="servoMax" class="input" type="number" min="300" max="3000" step="1" />
+            <button class="btn btn--ghost btn--tiny" id="setMaxBtn">Use current</button>
+          </div>
+        </div>
+        <div class="statrow">
+          <div class="field">
+            <label for="servoZero">Zero (us)</label>
+            <input id="servoZero" class="input" type="number" min="300" max="3000" step="1" />
+            <button class="btn btn--ghost btn--tiny" id="setZeroBtn">Use current</button>
+          </div>
+          <div class="buttons">
+            <button class="btn btn--mint" id="zeroBtn">Zero Servo</button>
+            <button class="btn" id="saveServoBtn">Save Range</button>
+            <button class="btn btn--ghost" id="resetServoBtn">Reset</button>
+          </div>
+        </div>
+      </article>
     </section>
 
     <footer class="footer">
