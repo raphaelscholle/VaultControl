@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VaultControl Terminal</title>
+  <link rel="stylesheet" href="/app.css" />
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="glow glow--corner"></div>
+  <div class="scanlines"></div>
+
+  <main class="shell">
+    <header class="hero">
+      <div class="hero__brand">
+        <div class="badge">VAULT-CTRL</div>
+        <h1>VaultControl Terminal</h1>
+      </div>
+      <p class="hero__sub">Servo control, analog telemetry, and live calibration.</p>
+      <div class="hero__meta">
+        <span class="chip" id="ip">IP: --</span>
+        <span class="chip" id="wifi">WiFi: --</span>
+        <span class="chip" id="clients">Clients: --</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card reveal" style="--d: 0ms">
+        <div class="card__head">
+          <div>
+            <p class="kicker">Servo</p>
+            <h2>Angle Control</h2>
+          </div>
+          <span class="pill" id="pulse">pulse: -- us</span>
+        </div>
+        <div class="dial">
+          <div class="dial__value" id="angleVal">90 deg</div>
+          <input id="angle" class="slider" type="range" min="0" max="180" value="90" />
+        </div>
+        <p class="hint">Keep GPIO12 floating at boot to avoid strap issues.</p>
+      </article>
+
+      <article class="card reveal" style="--d: 120ms">
+        <div class="card__head">
+          <div>
+            <p class="kicker">Analog</p>
+            <h2>Signal Monitor</h2>
+          </div>
+          <span class="pill" id="raw">raw: --</span>
+        </div>
+        <div class="meter">
+          <div class="meter__fill" id="calFill" style="width: 0%"></div>
+        </div>
+        <div class="meter__labels">
+          <span id="cal">cal: --%</span>
+          <span class="muted" id="range">min: -- | max: --</span>
+        </div>
+        <div class="statrow">
+          <div class="stat">
+            <span class="stat__label">Min</span>
+            <span class="stat__value" id="min">--</span>
+          </div>
+          <div class="stat">
+            <span class="stat__label">Max</span>
+            <span class="stat__value" id="max">--</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="card reveal" style="--d: 240ms">
+        <div class="card__head">
+          <div>
+            <p class="kicker">Calibration</p>
+            <h2>Capture Range</h2>
+          </div>
+          <span class="pill" id="calState">Idle</span>
+        </div>
+        <p class="hint">Sweep the sensor through its full travel, then save.</p>
+        <div class="buttons">
+          <button class="btn" id="startBtn">Start</button>
+          <button class="btn btn--mint" id="stopBtn">Stop & Save</button>
+          <button class="btn btn--ghost" id="resetBtn">Reset</button>
+        </div>
+        <div class="notice">
+          <span class="notice__dot"></span>
+          <span id="noticeText">Calibration idle</span>
+        </div>
+      </article>
+    </section>
+
+    <footer class="footer">
+      <span>Powered by PlatformIO + ESP32</span>
+      <span class="muted">UI stored in SPIFFS</span>
+    </footer>
+  </main>
+</body>
+</html>
