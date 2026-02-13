@@ -21,8 +21,10 @@ const int ANALOG_PIN = 4;  // GPIO4 (ADC2)
 const int SERVO_CHANNEL = 0;
 const int SERVO_FREQ_HZ = 50;  // 50 Hz typical
 const int SERVO_RES_BITS = 16; // 16-bit PWM
-const int SERVO_MIN_US = 500;  // pulse width at 0 deg
-const int SERVO_MAX_US = 2500; // pulse width at 180 deg
+const uint16_t SERVO_MIN_US = 500;     // pulse width at 0 deg
+const uint16_t SERVO_MAX_US = 2500;    // pulse width at 180 deg
+const uint16_t SERVO_ABS_MIN_US = 300; // safety clamp for calibration
+const uint16_t SERVO_ABS_MAX_US = 3000;
 
 // ======= ANALOG CONFIG =======
 const int ANALOG_SAMPLES = 16; // simple averaging
@@ -35,6 +37,9 @@ bool isCalibrating = false;
 uint16_t calMin = 4095;
 uint16_t calMax = 0;
 int currentAngle = 90;
+uint16_t servoMinUs = SERVO_MIN_US;
+uint16_t servoMaxUs = SERVO_MAX_US;
+uint32_t currentPulseUs = SERVO_MIN_US;
 
 // ======= HELPERS =======
 uint16_t analogReadAvg() {
@@ -52,15 +57,40 @@ uint32_t usToDuty(uint32_t us) {
   return (uint32_t)((uint64_t)us * SERVO_FREQ_HZ * maxDuty / 1000000ULL);
 }
 
+uint16_t clampServoUs(int value) {
+  if (value < SERVO_ABS_MIN_US) return SERVO_ABS_MIN_US;
+  if (value > SERVO_ABS_MAX_US) return SERVO_ABS_MAX_US;
+  return (uint16_t)value;
+}
+
 uint32_t angleToPulseUs(int angle) {
   if (angle < 0) angle = 0;
   if (angle > 180) angle = 180;
-  return SERVO_MIN_US + (SERVO_MAX_US - SERVO_MIN_US) * (uint32_t)angle / 180U;
+  if (servoMaxUs <= servoMinUs) return servoMinUs;
+  return servoMinUs + (servoMaxUs - servoMinUs) * (uint32_t)angle / 180U;
+}
+
+int pulseToAngle(uint32_t pulse) {
+  if (servoMaxUs <= servoMinUs) return 0;
+  if (pulse <= servoMinUs) return 0;
+  if (pulse >= servoMaxUs) return 180;
+  return (int)((pulse - servoMinUs) * 180UL / (servoMaxUs - servoMinUs));
+}
+
+void setServoPulseUs(uint32_t pulse) {
+  uint16_t clamped = clampServoUs((int)pulse);
+  currentPulseUs = clamped;
+  currentAngle = pulseToAngle(clamped);
+  uint32_t duty = usToDuty(clamped);
+  ledcWrite(SERVO_CHANNEL, duty);
 }
 
 void setServoAngle(int angle) {
+  if (angle < 0) angle = 0;
+  if (angle > 180) angle = 180;
   currentAngle = angle;
   uint32_t pulse = angleToPulseUs(angle);
+  currentPulseUs = pulse;
   uint32_t duty = usToDuty(pulse);
   ledcWrite(SERVO_CHANNEL, duty);
 }
@@ -87,6 +117,24 @@ void saveCalibration() {
   prefs.end();
 }
 
+void loadServoCalibration() {
+  prefs.begin("servo", true);
+  servoMinUs = prefs.getUShort("minUs", SERVO_MIN_US);
+  servoMaxUs = prefs.getUShort("maxUs", SERVO_MAX_US);
+  prefs.end();
+  if (servoMinUs < SERVO_ABS_MIN_US || servoMaxUs > SERVO_ABS_MAX_US || servoMaxUs <= servoMinUs) {
+    servoMinUs = SERVO_MIN_US;
+    servoMaxUs = SERVO_MAX_US;
+  }
+}
+
+void saveServoCalibration() {
+  prefs.begin("servo", false);
+  prefs.putUShort("minUs", servoMinUs);
+  prefs.putUShort("maxUs", servoMaxUs);
+  prefs.end();
+}
+
 IPAddress currentIP() {
   if (WiFi.getMode() & WIFI_AP) {
     return WiFi.softAPIP();
@@ -103,7 +151,6 @@ void handleStatus() {
   }
 
   float cal = calibratedPercent(raw);
-  uint32_t pulse = angleToPulseUs(currentAngle);
   IPAddress ip = currentIP();
 
   String json = "{";
@@ -116,7 +163,9 @@ void handleStatus() {
   json += "\"wifi\":" + String(WiFi.getMode() != WIFI_OFF ? "true" : "false") + ",";
   json += "\"clients\":" + String(WiFi.softAPgetStationNum()) + ",";
   json += "\"ip\":\"" + ip.toString() + "\",";
-  json += "\"pulse\":" + String(pulse);
+  json += "\"servoMinUs\":" + String(servoMinUs) + ",";
+  json += "\"servoMaxUs\":" + String(servoMaxUs) + ",";
+  json += "\"pulse\":" + String(currentPulseUs);
   json += "}";
 
   server.send(200, "application/json", json);
@@ -157,6 +206,47 @@ void handleCalibrate() {
   server.send(200, "text/plain", "OK");
 }
 
+void handleServoCalibrate() {
+  if (server.hasArg("pulse")) {
+    uint32_t pulse = (uint32_t)server.arg("pulse").toInt();
+    setServoPulseUs(pulse);
+    server.send(200, "text/plain", "OK");
+    return;
+  }
+
+  if (!server.hasArg("cmd")) {
+    server.send(400, "text/plain", "Missing cmd");
+    return;
+  }
+
+  String cmd = server.arg("cmd");
+  cmd.toLowerCase();
+
+  if (cmd == "save") {
+    if (!server.hasArg("min") || !server.hasArg("max")) {
+      server.send(400, "text/plain", "Missing min/max");
+      return;
+    }
+    uint16_t minUs = clampServoUs(server.arg("min").toInt());
+    uint16_t maxUs = clampServoUs(server.arg("max").toInt());
+    if (maxUs <= minUs) {
+      server.send(400, "text/plain", "Invalid range");
+      return;
+    }
+    servoMinUs = minUs;
+    servoMaxUs = maxUs;
+    saveServoCalibration();
+    setServoAngle(currentAngle);
+  } else if (cmd == "reset") {
+    servoMinUs = SERVO_MIN_US;
+    servoMaxUs = SERVO_MAX_US;
+    saveServoCalibration();
+    setServoAngle(currentAngle);
+  }
+
+  server.send(200, "text/plain", "OK");
+}
+
 void setup() {
   Serial.begin(115200);
   delay(200);
@@ -164,6 +254,7 @@ void setup() {
   // Servo setup
   ledcSetup(SERVO_CHANNEL, SERVO_FREQ_HZ, SERVO_RES_BITS);
   ledcAttachPin(SERVO_PIN, SERVO_CHANNEL);
+  loadServoCalibration();
   setServoAngle(currentAngle);
 
   // Analog setup
@@ -184,6 +275,7 @@ void setup() {
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/set", HTTP_GET, handleSet);
   server.on("/api/calibrate", HTTP_GET, handleCalibrate);
+  server.on("/api/servo", HTTP_GET, handleServoCalibrate);
   server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
   server.onNotFound([]() { server.send(404, "text/plain", "Not Found"); });
   server.begin();
